@@ -1,62 +1,63 @@
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 interface Bet {
     busId: string;
-    amount: number;
-    prediction: 'early' | 'late';
-    placedAt: string;
     routeNumber: string;
-    resolved?: boolean;
+    amount: number;
+    prediction: 'early' | 'late' | 'ontime';
+    placedAt: string;
+    resolved: boolean;
     won?: boolean;
 }
 
-interface UserState {
+interface UserStore {
     balance: number;
     bets: Bet[];
-    addMoney: (amount: number) => void;
-    deductMoney: (amount: number) => void;
-    placeBet: (bet: Omit<Bet, 'placedAt'>) => void;
+    buses: any[];
+    placeBet: (bet: Omit<Bet, 'placedAt' | 'resolved' | 'won'>) => void;
     resolveBet: (busId: string, won: boolean) => void;
     clearBets: () => void;
-    buses?: any[];
+    setBuses: (buses: any[]) => void;
 }
 
-export const useUserStore = create<UserState>()(
+export const useUserStore = create<UserStore>()(
+
     persist(
         (set) => ({
             balance: 100,
             bets: [],
-            addMoney: (amount) => set((state) => ({ balance: state.balance + amount })),
-            deductMoney: (amount) => set((state) => ({ balance: state.balance - amount })),
+            buses: [],
+            setBuses: (buses) => set({ buses }),
             placeBet: (bet) => set((state) => ({
+                ...state,
                 balance: state.balance - bet.amount,
-                bets: [...state.bets, { ...bet, placedAt: new Date().toISOString() }]
+                bets: [...state.bets, {
+                    ...bet,
+                    placedAt: new Date().toISOString(),
+                    resolved: false,
+                }],
             })),
-            resolveBet: (busId, won) => set((state) => {
-                console.log('Resolving bet:', { busId, won }); // Add debug log
-                return {
-                    bets: state.bets.map(bet =>
-                        bet.busId === busId
-                            ? { ...bet, resolved: true, won }
-                            : bet
-                    ),
-                    balance: won
-                        ? state.balance + (state.bets.find(b => b.busId === busId)?.amount ?? 0) * 2
-                        : state.balance
-                }
-            }),
+            resolveBet: (busId: string, won: boolean) => set((state) => ({
+                ...state,
+                balance: won
+                    ? state.balance + (state.bets.find(b => b.busId === busId)?.amount ?? 0) * 2
+                    : state.balance,
+                bets: state.bets.map(bet =>
+                    bet.busId === busId && !bet.resolved
+                        ? { ...bet, resolved: true, won }
+                        : bet
+                )
+            })),
             clearBets: () => set((state) => ({
-                bets: [],
-                // Return any pending bet amounts to balance
                 balance: state.balance + state.bets
                     .filter(bet => !bet.resolved)
-                    .reduce((sum, bet) => sum + bet.amount, 0)
-            })),
-            buses: [],
+                    .reduce((sum, bet) => sum + bet.amount, 0),
+                bets: []
+            }))
         }),
         {
-            name: 'user-storage',
+            name: 'user-storage'
         }
     )
-)
+);

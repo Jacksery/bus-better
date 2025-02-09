@@ -29,7 +29,7 @@ export function BettingHistory() {
             pendingBets.forEach(bet => {
                 const bus = buses?.find(b => b.id === bet.busId);
                 if (!bus) return;
-                
+
                 const delay = getCurrentDelay(bus);
                 if (delay === null) return;
 
@@ -39,12 +39,12 @@ export function BettingHistory() {
                     let won = false;
                     if (bet.prediction === 'early' && delay < 0) won = true;
                     if (bet.prediction === 'late' && delay > 0) won = true;
-                    if (bet.prediction === 'ontime' && Math.abs(delay) < 1) won = true;
 
-                    resolveBet(bet.id, won);
+                    resolveBet(bet.busId, won);
                     toast({
-                        description: won 
-                            ? `You won £${bet.amount * 2} on Route ${bet.routeNumber}!` 
+                        description: won
+                            ? `You won £${bet.amount * 2} on Route ${bet.routeNumber}!`
+
                             : `You lost £${bet.amount} on Route ${bet.routeNumber}`,
                     });
                 }
