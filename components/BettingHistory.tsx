@@ -40,7 +40,7 @@ export function BettingHistory() {
                     if (bet.prediction === 'early' && delay < 0) won = true;
                     if (bet.prediction === 'late' && delay > 0) won = true;
 
-                    resolveBet(bet.id, won);
+                    resolveBet(bet.busId, won);
                     toast({
                         description: won
                             ? `You won £${bet.amount * 2} on Route ${bet.routeNumber}!`
