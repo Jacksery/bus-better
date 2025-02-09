@@ -5,7 +5,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { getBusData } from "../services/busService"
 import { BusCard } from "../components/BusCard"
 import { LiveIndicator } from "../components/LiveIndicator"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { BusData } from "../services/busService"
 import { FilterControls, SortOption, SortDirection, ScheduleFilter, isAheadOfSchedule, isBehindSchedule } from "../components/FilterControls"
 import { Pagination } from "../components/Pagination"
@@ -30,37 +30,58 @@ export default function Home() {
   const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>('all');
   const ITEMS_PER_PAGE = 5;
   const MINIMUM_DELAY_THRESHOLD = 1; // minimum 1 minute difference to count as ahead/behind
+  const processingBets = useRef(false);
 
-  const checkAndResolveBets = (currentBuses: BusData[]) => {
-    const now = new Date().getTime();
-    const activeBets = bets.filter(bet => !bet.resolved);
-
-    activeBets.forEach(bet => {
-      const bus = currentBuses.find(b => b.id === bet.busId);
-      if (!bus) return;
-
-      const arrivalTime = new Date(bus.scheduledArrival).getTime();
-
-      // Only resolve bets when we've passed the scheduled arrival time
-      if (now > arrivalTime) {
-        const delay = getBusDelay(bus);
-        console.log('Resolving bet for bus', bus.id, 'delay:', delay); // Debug log
-
-        // Early if delay is negative, Late if delay is positive
-        const isEarly = delay < 0;
-        const won = (bet.prediction === 'early' && isEarly) ||
-          (bet.prediction === 'late' && !isEarly);
-
-        resolveBet(bet.busId, won);
-
-        toast({
-          title: won ? "You won!" : "You lost!",
-          description: `Your bet on bus ${bet.routeNumber} ${won ? "won" : "lost"} £${bet.amount}${won ? "*2" : ""}`,
-          variant: won ? "default" : "destructive",
-        });
-      }
-    });
+  const getBusDelay = (bus: BusData): number => {
+    if (!bus.expectedDeparture || !bus.scheduledDeparture) return 0;
+    const expectedTime = new Date(bus.expectedDeparture).getTime();
+    const scheduledTime = new Date(bus.scheduledDeparture).getTime();
+    return Math.round((expectedTime - scheduledTime) / (1000 * 60)); // Return delay in minutes
   };
+
+  const checkBets = useCallback(() => {
+    if (buses.length > 0) {
+      const now = new Date().getTime();
+      const activeBets = bets.filter(bet => !bet.resolved);
+
+      activeBets.forEach(bet => {
+        const bus = buses.find(b => b.id === bet.busId);
+        if (!bus) return;
+
+        const arrivalTime = new Date(bus.scheduledArrival).getTime();
+
+        // Check if we've passed the arrival time
+        if (now >= arrivalTime) {
+          const delay = getBusDelay(bus);
+          console.log('Checking bet resolution:', {
+            busId: bus.id,
+            routeNumber: bus.routeNumber,
+            delay,
+            prediction: bet.prediction,
+            arrivalTime: new Date(arrivalTime).toISOString(),
+            now: new Date(now).toISOString()
+          });
+
+          // Determine win/loss
+          const won = (bet.prediction === 'early' && delay <= -1) || 
+                     (bet.prediction === 'late' && delay >= 1);
+
+          resolveBet(bet.busId, won);
+          
+          toast({
+            title: won ? "You won!" : "You lost!",
+            description: `Bus ${bus.routeNumber} was ${delay < 0 ? 'early' : delay > 0 ? 'late' : 'on time'} by ${Math.abs(delay)} minutes`,
+            variant: won ? "default" : "destructive",
+          });
+        }
+      });
+    }
+  }, [buses, bets, resolveBet, toast, getBusDelay]);
+
+  // Update userStore with current buses for status indicators
+  useEffect(() => {
+    useUserStore.setState({ buses });
+  }, [buses]);
 
   const fetchBuses = async (isInitialLoad = false) => {
     try {
@@ -72,7 +93,7 @@ export default function Home() {
       setError(null);
       const data = await getBusData();
       setBuses(data);
-      checkAndResolveBets(data);
+      checkBets();
     } catch (err) {
       setError('Failed to fetch bus data. Please try again later.');
       console.error(err);
@@ -86,7 +107,16 @@ export default function Home() {
     fetchBuses(true);
     const interval = setInterval(() => fetchBuses(false), 10000);
     return () => clearInterval(interval);
-  }, [bets, resolveBet]);
+  }, []); // Empty dependency array
+
+  // Separate effect for bet checking
+  useEffect(() => {
+    if (bets.some(bet => !bet.resolved)) {
+      checkBets();
+      const interval = setInterval(checkBets, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [checkBets, bets.length]); // Only depend on bets.length and the callback
 
   const handleRouteClick = (route: string) => {
     if (!selectedRoutes.includes(route)) {
@@ -170,21 +200,6 @@ export default function Home() {
     const departure = new Date(bus.scheduledDeparture).getTime(); // Use scheduled time for active check
     const arrival = new Date(bus.scheduledArrival).getTime();
     return departure <= now && now <= arrival;
-  };
-
-  const getBusDelay = (bus: BusData): number => {
-    if (!bus.expectedDeparture || !bus.scheduledDeparture) return 0;
-    const now = new Date().getTime();
-    const arrival = new Date(bus.scheduledArrival).getTime();
-    const expectedTime = new Date(bus.expectedDeparture).getTime();
-    const scheduledTime = new Date(bus.scheduledDeparture).getTime();
-
-    // If we've passed the arrival time, use the final delay
-    if (now > arrival) {
-      return (expectedTime - scheduledTime) / (1000 * 60);
-    }
-
-    return 0; // Don't resolve until arrival time
   };
 
   const filteredBuses = sortBuses(

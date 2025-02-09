@@ -18,6 +18,8 @@ interface UserState {
     deductMoney: (amount: number) => void;
     placeBet: (bet: Omit<Bet, 'placedAt'>) => void;
     resolveBet: (busId: string, won: boolean) => void;
+    clearBets: () => void;
+    buses?: any[];
 }
 
 export const useUserStore = create<UserState>()(
@@ -43,7 +45,15 @@ export const useUserStore = create<UserState>()(
                         ? state.balance + (state.bets.find(b => b.busId === busId)?.amount ?? 0) * 2
                         : state.balance
                 }
-            })
+            }),
+            clearBets: () => set((state) => ({
+                bets: [],
+                // Return any pending bet amounts to balance
+                balance: state.balance + state.bets
+                    .filter(bet => !bet.resolved)
+                    .reduce((sum, bet) => sum + bet.amount, 0)
+            })),
+            buses: [],
         }),
         {
             name: 'user-storage',
