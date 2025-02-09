@@ -8,7 +8,7 @@ export function CurrencyDisplay() {
 
     return (
         <Badge variant="secondary">
-            Balance: £{balance.toFixed(2)}
+            Credit: £{balance.toFixed(2)}
         </Badge>
     )
 }

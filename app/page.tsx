@@ -7,7 +7,7 @@ import { BusCard } from "../components/BusCard"
 import { LiveIndicator } from "../components/LiveIndicator"
 import { useEffect, useState } from "react"
 import { BusData } from "../services/busService"
-import { FilterControls, SortOption, SortDirection } from "../components/FilterControls"
+import { FilterControls, SortOption, SortDirection, ScheduleFilter, isAheadOfSchedule, isBehindSchedule } from "../components/FilterControls"
 import { Pagination } from "../components/Pagination"
 import { CurrencyDisplay } from "../components/CurrencyDisplay"
 
@@ -24,7 +24,9 @@ export default function Home() {
   const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [selectedRoutes, setSelectedRoutes] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>('all');
   const ITEMS_PER_PAGE = 5;
+  const MINIMUM_DELAY_THRESHOLD = 1; // minimum 1 minute difference to count as ahead/behind
 
   const fetchBuses = async (isInitialLoad = false) => {
     try {
@@ -47,7 +49,7 @@ export default function Home() {
 
   useEffect(() => {
     fetchBuses(true); // Pass true for initial load
-    const interval = setInterval(() => fetchBuses(false), 30000);
+    const interval = setInterval(() => fetchBuses(false), 10000); // Changed from 30000 to 10000
     return () => clearInterval(interval);
   }, []);
 
@@ -79,6 +81,7 @@ export default function Home() {
     setSortDirection('desc');
     setHideUnknown(false);
     setShowActiveOnly(false);
+    setScheduleFilter('all');
   };
 
   const availableRoutes = [...new Set(buses.map(bus => bus.routeNumber))].sort((a, b) =>
@@ -119,23 +122,53 @@ export default function Home() {
   };
 
   const hasValidTimes = (bus: BusData): boolean => {
-    const departureTime = bus.expectedDeparture || bus.scheduledDeparture;
-    return !!(departureTime && !isNaN(new Date(departureTime).getTime()) &&
+    const expectedTime = bus.expectedDeparture || bus.scheduledDeparture;
+    const scheduledTime = bus.scheduledDeparture;
+    return !!(expectedTime && scheduledTime &&
+      !isNaN(new Date(expectedTime).getTime()) &&
+      !isNaN(new Date(scheduledTime).getTime()) &&
       bus.scheduledArrival && !isNaN(new Date(bus.scheduledArrival).getTime()));
   };
 
   const isActiveBus = (bus: BusData): boolean => {
     const now = new Date().getTime();
-    const departure = new Date(bus.expectedDeparture || bus.scheduledDeparture).getTime();
+    const departure = new Date(bus.scheduledDeparture).getTime(); // Use scheduled time for active check
     const arrival = new Date(bus.scheduledArrival).getTime();
     return departure <= now && now <= arrival;
   };
 
+  const getBusDelay = (bus: BusData): number => {
+    if (!bus.expectedDeparture || !bus.scheduledDeparture) return 0;
+    const expectedTime = new Date(bus.expectedDeparture).getTime();
+    const scheduledTime = new Date(bus.scheduledDeparture).getTime();
+    return (expectedTime - scheduledTime) / (1000 * 60); // Convert to minutes
+  };
+
   const filteredBuses = sortBuses(
     buses.filter(bus => {
+      // First check if bus is active when required
+      if (showActiveOnly && !isActiveBus(bus)) {
+        return false;
+      }
+
+      // Basic filters
       if (hideUnknown && !hasValidTimes(bus)) return false;
-      if (showActiveOnly && !isActiveBus(bus)) return false;
       if (selectedRoutes.length > 0 && !selectedRoutes.includes(bus.routeNumber)) return false;
+
+      // Schedule filter - only apply to active buses
+      if (scheduleFilter !== 'all') {
+        // If bus isn't active, filter it out when using schedule filters
+        if (!isActiveBus(bus)) return false;
+
+        const delay = getBusDelay(bus);
+        if (scheduleFilter === 'ahead' && !isAheadOfSchedule(delay)) {
+          return false;
+        }
+        if (scheduleFilter === 'behind' && !isBehindSchedule(delay)) {
+          return false;
+        }
+      }
+
       return true;
     })
   );
@@ -185,6 +218,8 @@ export default function Home() {
           visibleBuses={stats.visible}
           activeBuses={stats.active}
           onClearFilters={handleClearFilters}
+          scheduleFilter={scheduleFilter}
+          onScheduleFilterChange={setScheduleFilter}
         />
 
         {/* Loading and error states */}

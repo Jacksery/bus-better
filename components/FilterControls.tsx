@@ -3,9 +3,21 @@ import { Checkbox } from "./ui/checkbox"
 import { RouteNumberGrid } from "./RouteNumberGrid"
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover"
 import { Button } from "./ui/button";
+import { resetAllDelays } from '../utils/timeUtils';
+import { Toast } from './ui/toast';
+import { useToast } from "@/hooks/use-toast";
+
+export function isAheadOfSchedule(delay: number | null): boolean {
+    return delay !== null && delay < 0;
+}
+
+export function isBehindSchedule(delay: number | null): boolean {
+    return delay !== null && delay > 0;
+}
 
 export type SortOption = 'lastUpdated' | 'departure' | 'arrival' | 'routeNumber';
 export type SortDirection = 'asc' | 'desc';
+export type ScheduleFilter = 'all' | 'ahead' | 'behind';
 
 interface FilterControlsProps {
     onSortChange: (option: SortOption) => void;
@@ -23,6 +35,8 @@ interface FilterControlsProps {
     visibleBuses: number;
     activeBuses: number;
     onClearFilters: () => void;  // Add new prop
+    scheduleFilter: ScheduleFilter;
+    onScheduleFilterChange: (filter: ScheduleFilter) => void;
 }
 
 function BusStats({ total, visible, active }: { total: number; visible: number; active: number }) {
@@ -59,7 +73,9 @@ export function FilterControls({
     totalBuses,
     visibleBuses,
     activeBuses,
-    onClearFilters
+    onClearFilters,
+    scheduleFilter,
+    onScheduleFilterChange
 }: FilterControlsProps) {
     const handleSelectAll = () => {
         availableRoutes.forEach(route => {
@@ -73,6 +89,18 @@ export function FilterControls({
         selectedRoutes.forEach(route => {
             onRouteToggle(route);
         });
+    };
+
+    const { toast } = useToast()
+    const handleResetDelays = () => {
+        if (confirm('Are you sure you want to reset all bus delays?')) {
+            resetAllDelays();
+            toast({
+                title: "Delays Reset",
+                description: "All bus delays have been reset. Refreshing page...",
+            });
+            setTimeout(() => window.location.reload(), 1000);
+        }
     };
 
     return (
@@ -164,17 +192,44 @@ export function FilterControls({
                 </div>
             </div>
 
+            {/* Schedule Filter */}
+            <div className="flex items-center gap-4">
+                <label className="text-sm font-medium">Schedule Status:</label>
+                <Select value={scheduleFilter} onValueChange={(value: ScheduleFilter) => onScheduleFilterChange(value)}>
+                    <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Filter by schedule" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">All Buses</SelectItem>
+                        <SelectItem value="ahead">Ahead of Schedule</SelectItem>
+                        <SelectItem value="behind">Behind Schedule</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
             {/* Stats and Reset - Now at bottom */}
             <div className="flex justify-between items-center">
                 <BusStats total={totalBuses} visible={visibleBuses} active={activeBuses} />
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onClearFilters}
-                    className="text-muted-foreground hover:bg-destructive/10"
-                >
-                    Reset Filters
-                </Button>
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onClearFilters}
+                        className="text-muted-foreground hover:bg-destructive/10"
+                    >
+                        Reset Filters
+                    </Button>
+                    {process.env.NODE_ENV === 'development' && (
+                        <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={handleResetDelays}
+                            className="ml-2"
+                        >
+                            Reset All Delays
+                        </Button>
+                    )}
+                </div>
             </div>
         </div>
     )

@@ -2,6 +2,10 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { BusData } from "../services/busService"
 import { formatDateTime } from "../utils/dateFormat"
+import { useUserStore } from "@/store/userStore";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 
 interface BusCardProps {
     bus: BusData;
@@ -9,6 +13,11 @@ interface BusCardProps {
 }
 
 export function BusCard({ bus, onRouteClick }: BusCardProps) {
+    const { toast } = useToast()
+
+    const { balance, bets, placeBet } = useUserStore();
+    const [betAmount, setBetAmount] = useState<number>(1);
+
     const departureTime = bus.expectedDeparture || bus.scheduledDeparture;
 
     const isActiveBus = (): boolean => {
@@ -39,6 +48,25 @@ export function BusCard({ bus, onRouteClick }: BusCardProps) {
         return delay > 0
             ? <Badge variant="destructive">{delay} mins behind</Badge>
             : <Badge variant="default">{Math.abs(delay)} mins ahead</Badge>;
+    };
+
+    const existingBet = bets.find(b => b.busId === bus.id && !b.resolved);
+    const canPlaceBet = isActiveBus() && !existingBet && balance >= betAmount;
+
+    const handlePlaceBet = (prediction: 'early' | 'late') => {
+        if (!canPlaceBet) return;
+
+        placeBet({
+            busId: bus.id,
+            amount: betAmount,
+            prediction,
+            routeNumber: bus.routeNumber
+        });
+
+        toast({
+            title: "Bet Placed!",
+            description: `£${betAmount} on bus ${bus.routeNumber} arriving ${prediction}`,
+        });
     };
 
     const routeNumberClass = isActiveBus()
@@ -105,6 +133,43 @@ export function BusCard({ bus, onRouteClick }: BusCardProps) {
                             Last updated: {formatDateTime(bus.recordedAt)}
                         </div>
                     </div>
+
+                    {/* Add betting controls */}
+                    {isActiveBus() && (
+                        <div className="mt-4 pt-4 border-t">
+                            <div className="flex items-center gap-4">
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max={balance}
+                                    value={betAmount}
+                                    onChange={(e) => setBetAmount(Number(e.target.value))}
+                                    className="w-20 px-2 py-1 border rounded"
+                                />
+                                <Button
+                                    onClick={() => handlePlaceBet('early')}
+                                    disabled={!canPlaceBet}
+                                    variant="outline"
+                                    className="flex-1"
+                                >
+                                    Bet Early (2x)
+                                </Button>
+                                <Button
+                                    onClick={() => handlePlaceBet('late')}
+                                    disabled={!canPlaceBet}
+                                    variant="outline"
+                                    className="flex-1"
+                                >
+                                    Bet Late (2x)
+                                </Button>
+                            </div>
+                            {existingBet && (
+                                <p className="text-sm text-muted-foreground mt-2">
+                                    You bet £{existingBet.amount} on this bus arriving {existingBet.prediction}
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </div>
             </CardContent>
         </Card>
