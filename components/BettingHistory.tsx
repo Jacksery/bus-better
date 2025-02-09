@@ -44,6 +44,7 @@ export function BettingHistory() {
                     toast({
                         description: won
                             ? `You won £${bet.amount * 2} on Route ${bet.routeNumber}!`
+
                             : `You lost £${bet.amount} on Route ${bet.routeNumber}`,
                     });
                 }

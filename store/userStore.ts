@@ -22,6 +22,7 @@ interface UserStore {
 }
 
 export const useUserStore = create<UserStore>()(
+
     persist(
         (set) => ({
             balance: 100,
