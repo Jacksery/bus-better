@@ -9,6 +9,7 @@ import { useEffect, useState } from "react"
 import { BusData } from "../services/busService"
 import { FilterControls, SortOption, SortDirection } from "../components/FilterControls"
 import { Pagination } from "../components/Pagination"
+import { CurrencyDisplay } from "../components/CurrencyDisplay"
 
 export default function Home() {
   const { toast } = useToast()
@@ -159,6 +160,7 @@ export default function Home() {
   return (
     <div className="min-h-screen p-4">
       <div className="fixed top-4 right-4 flex items-center gap-4">
+        <CurrencyDisplay />
         {!isLoading && !error && <LiveIndicator />}
         <ThemeToggle />
       </div>
