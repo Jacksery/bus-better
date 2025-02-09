@@ -10,9 +10,12 @@ import { BusData } from "../services/busService"
 import { FilterControls, SortOption, SortDirection, ScheduleFilter, isAheadOfSchedule, isBehindSchedule } from "../components/FilterControls"
 import { Pagination } from "../components/Pagination"
 import { CurrencyDisplay } from "../components/CurrencyDisplay"
+import { BettingHistory } from "@/components/BettingHistory"
+import { useUserStore } from "@/store/userStore"
 
 export default function Home() {
   const { toast } = useToast()
+  const { bets, resolveBet } = useUserStore();
 
   const [buses, setBuses] = useState<BusData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -28,6 +31,37 @@ export default function Home() {
   const ITEMS_PER_PAGE = 5;
   const MINIMUM_DELAY_THRESHOLD = 1; // minimum 1 minute difference to count as ahead/behind
 
+  const checkAndResolveBets = (currentBuses: BusData[]) => {
+    const now = new Date().getTime();
+    const activeBets = bets.filter(bet => !bet.resolved);
+
+    activeBets.forEach(bet => {
+      const bus = currentBuses.find(b => b.id === bet.busId);
+      if (!bus) return;
+
+      const arrivalTime = new Date(bus.scheduledArrival).getTime();
+
+      // Only resolve bets when we've passed the scheduled arrival time
+      if (now > arrivalTime) {
+        const delay = getBusDelay(bus);
+        console.log('Resolving bet for bus', bus.id, 'delay:', delay); // Debug log
+
+        // Early if delay is negative, Late if delay is positive
+        const isEarly = delay < 0;
+        const won = (bet.prediction === 'early' && isEarly) ||
+          (bet.prediction === 'late' && !isEarly);
+
+        resolveBet(bet.busId, won);
+
+        toast({
+          title: won ? "You won!" : "You lost!",
+          description: `Your bet on bus ${bet.routeNumber} ${won ? "won" : "lost"} £${bet.amount}${won ? "*2" : ""}`,
+          variant: won ? "default" : "destructive",
+        });
+      }
+    });
+  };
+
   const fetchBuses = async (isInitialLoad = false) => {
     try {
       if (isInitialLoad) {
@@ -38,6 +72,7 @@ export default function Home() {
       setError(null);
       const data = await getBusData();
       setBuses(data);
+      checkAndResolveBets(data);
     } catch (err) {
       setError('Failed to fetch bus data. Please try again later.');
       console.error(err);
@@ -48,10 +83,10 @@ export default function Home() {
   };
 
   useEffect(() => {
-    fetchBuses(true); // Pass true for initial load
-    const interval = setInterval(() => fetchBuses(false), 10000); // Changed from 30000 to 10000
+    fetchBuses(true);
+    const interval = setInterval(() => fetchBuses(false), 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [bets, resolveBet]);
 
   const handleRouteClick = (route: string) => {
     if (!selectedRoutes.includes(route)) {
@@ -139,9 +174,17 @@ export default function Home() {
 
   const getBusDelay = (bus: BusData): number => {
     if (!bus.expectedDeparture || !bus.scheduledDeparture) return 0;
+    const now = new Date().getTime();
+    const arrival = new Date(bus.scheduledArrival).getTime();
     const expectedTime = new Date(bus.expectedDeparture).getTime();
     const scheduledTime = new Date(bus.scheduledDeparture).getTime();
-    return (expectedTime - scheduledTime) / (1000 * 60); // Convert to minutes
+
+    // If we've passed the arrival time, use the final delay
+    if (now > arrival) {
+      return (expectedTime - scheduledTime) / (1000 * 60);
+    }
+
+    return 0; // Don't resolve until arrival time
   };
 
   const filteredBuses = sortBuses(
@@ -192,74 +235,86 @@ export default function Home() {
 
   return (
     <div className="min-h-screen p-4">
-      <div className="fixed top-4 right-4 flex items-center gap-4">
+      <div className="fixed top-4 right-4 flex items-center gap-4 z-50">
         <CurrencyDisplay />
         {!isLoading && !error && <LiveIndicator />}
         <ThemeToggle />
       </div>
-      <div className="max-w-4xl mx-auto">
+
+      {/* Change the container width and layout */}
+      <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold">Live Bus Tracker</h1>
         </div>
 
-        <FilterControls
-          onSortChange={setSortOption}
-          onDirectionChange={setSortDirection}
-          selectedSort={sortOption}
-          selectedDirection={sortDirection}
-          hideUnknown={hideUnknown}
-          onHideUnknownChange={setHideUnknown}
-          showActiveOnly={showActiveOnly}
-          onShowActiveOnlyChange={setShowActiveOnly}
-          availableRoutes={availableRoutes}
-          selectedRoutes={selectedRoutes}
-          onRouteToggle={handleRouteToggle}
-          totalBuses={stats.total}
-          visibleBuses={stats.visible}
-          activeBuses={stats.active}
-          onClearFilters={handleClearFilters}
-          scheduleFilter={scheduleFilter}
-          onScheduleFilterChange={setScheduleFilter}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+          <div>
+            <FilterControls
+              onSortChange={setSortOption}
+              onDirectionChange={setSortDirection}
+              selectedSort={sortOption}
+              selectedDirection={sortDirection}
+              hideUnknown={hideUnknown}
+              onHideUnknownChange={setHideUnknown}
+              showActiveOnly={showActiveOnly}
+              onShowActiveOnlyChange={setShowActiveOnly}
+              availableRoutes={availableRoutes}
+              selectedRoutes={selectedRoutes}
+              onRouteToggle={handleRouteToggle}
+              totalBuses={stats.total}
+              visibleBuses={stats.visible}
+              activeBuses={stats.active}
+              onClearFilters={handleClearFilters}
+              scheduleFilter={scheduleFilter}
+              onScheduleFilterChange={setScheduleFilter}
+            />
 
-        {/* Loading and error states */}
-        {isLoading && (
-          <div className="text-center py-8">
-            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading bus data...</p>
-          </div>
-        )}
+            {/* Loading state */}
+            {isLoading && (
+              <div className="text-center py-8">
+                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                <p className="text-muted-foreground">Loading bus data...</p>
+              </div>
+            )}
 
-        {error && (
-          <div className="bg-destructive/10 text-destructive p-4 rounded-md mb-4">
-            {error}
-          </div>
-        )}
+            {/* Error state */}
+            {error && (
+              <div className="bg-destructive/10 text-destructive p-4 rounded-md mb-4">
+                {error}
+              </div>
+            )}
 
-        {/* Bus list with pagination */}
-        {!isLoading && !error && (
-          <div className="space-y-4">
-            {filteredBuses.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">No buses found</p>
-            ) : (
-              <>
-                {paginatedBuses.map((bus) => (
-                  <BusCard
-                    key={bus.id}
-                    bus={bus}
-                    onRouteClick={handleRouteClick}
-                  />
-                ))}
-                <Pagination
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  onPageChange={setCurrentPage}
-                />
-              </>
+            {/* Bus list */}
+            {!isLoading && !error && (
+              <div className="space-y-4">
+                {filteredBuses.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">No buses found</p>
+                ) : (
+                  <>
+                    {paginatedBuses.map((bus) => (
+                      <BusCard
+                        key={bus.id}
+                        bus={bus}
+                        onRouteClick={handleRouteClick}
+                      />
+                    ))}
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={setCurrentPage}
+                    />
+                  </>
+                )}
+              </div>
             )}
           </div>
-        )}
+
+          {/* Betting sidebar - sticky position */}
+          <div className="lg:sticky lg:top-16 space-y-6 h-fit z-40">
+            <BettingHistory />
+          </div>
+        </div>
       </div>
     </div>
-  )
+  );
 }
