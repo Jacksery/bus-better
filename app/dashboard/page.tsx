@@ -8,11 +8,16 @@ import { FilteredBusList } from "@/components/filtered-bus-list";
 import { Sidebar } from "@/components/sidebar";
 import type { BusInfo } from "@/types/bus";
 
+type SearchParams = Promise<{ page?: string }>;
+
 interface PageProps {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: SearchParams;
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const currentPage = Number(params?.page) || 1;
+
   const { userId } = await auth();
   if (!userId) redirect("/");
 
@@ -30,8 +35,6 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       publicMetadata: { userCredit: 1000 },
     });
   }
-
-  const currentPage = Number(searchParams.page) || 1;
 
   return (
     <FilterProvider>
