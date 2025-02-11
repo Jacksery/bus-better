@@ -8,11 +8,11 @@ import { FilteredBusList } from "@/components/filtered-bus-list";
 import { Sidebar } from "@/components/sidebar";
 import type { BusInfo } from "@/types/bus";
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: { page?: string };
-}) {
+interface PageProps {
+  searchParams: { [key: string]: string | string[] | undefined };
+}
+
+export default async function DashboardPage({ searchParams }: PageProps) {
   const { userId } = await auth();
   if (!userId) redirect("/");
 
@@ -30,6 +30,8 @@ export default async function DashboardPage({
       publicMetadata: { userCredit: 1000 },
     });
   }
+
+  const currentPage = Number(searchParams.page) || 1;
 
   return (
     <FilterProvider>
@@ -51,10 +53,7 @@ export default async function DashboardPage({
               </Sidebar>
             </aside>
             <div className="order-1 md:col-span-2 space-y-4 md:order-2">
-              <FilteredBusList
-                buses={buses}
-                currentPage={Number(searchParams.page) || 1}
-              />
+              <FilteredBusList buses={buses} currentPage={currentPage} />
             </div>
           </div>
         </main>
